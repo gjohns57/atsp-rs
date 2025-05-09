@@ -424,6 +424,7 @@ fn atsp_step_k_plus_1(
     remaining_points: &mut HashSet<usize>,
     r0: f32,
 ) -> AdjacencyMatrix {
+    println!("{:?}", net_k);
     let mut next_graph = AdjacencyMatrix::new();
     next_graph.resize(net_k_plus_1.len());
 
@@ -445,6 +446,7 @@ fn atsp_step_k_plus_1(
         if (points[net_k[u]] - points[net_k[v]]).norm() >= max_edge_length
             || (flatness_u >= 1. / 16. && flatness_v >= 1. / 16.)
         {
+            println!("Keeping edge {} {}", vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]);
             next_graph.add_edge(vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]);
         } else {
             let mut u = u;
@@ -482,7 +484,7 @@ fn atsp_step_k_plus_1(
                 let (index, _component) = points_along_edge[i];
                 let (prev_index, _prev_component) = points_along_edge[i + 1];
 
-                println!("{} {}", vertex_labels[&index], vertex_labels[&prev_index]);
+                println!("replacing edge {} {} with {} {}", u, v, vertex_labels[&index], vertex_labels[&prev_index]);
                 next_graph.add_edge(vertex_labels[&index], vertex_labels[&prev_index]);
 
                 if index == v {
@@ -538,10 +540,11 @@ fn atsp_step_k_plus_1(
                 Err(index) => index,
             };
 
-            println!("{:?}", ordered_along_cyl);
+            println!("ordered along cyl {:?}", ordered_along_cyl);
 
             if do_points_to_left {
                 for i in 0..u_index {
+                    println!("Adding flat edge {} {}", vertex_labels[&ordered_along_cyl[i].0], vertex_labels[&ordered_along_cyl[i + 1].0]);
                     next_graph.add_edge(
                         vertex_labels[&ordered_along_cyl[i].0],
                         vertex_labels[&ordered_along_cyl[i + 1].0],
@@ -550,6 +553,8 @@ fn atsp_step_k_plus_1(
             }
             if do_points_to_right {
                 for i in u_index..(ordered_along_cyl.len() - 1) {
+                    println!("Adding flat edge {} {}", ordered_along_cyl[i].0, ordered_along_cyl[i + 1].0);
+
                     next_graph.add_edge(
                         vertex_labels[&ordered_along_cyl[i].0],
                         vertex_labels[&ordered_along_cyl[i + 1].0],
