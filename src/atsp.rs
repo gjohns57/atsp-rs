@@ -1,22 +1,32 @@
-use std::{collections::{HashMap, HashSet, VecDeque}, mem::swap, ops::Index};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    mem::swap,
+    ops::Index,
+};
 
-use nalgebra::Vector2;
+use nalgebra::{Vector2, zero};
 
-use crate::graph::{AdjacencyMatrix, Graph, GraphAL};
+use crate::graph::{AdjacencyMatrix, Graph};
 
 const C0: f32 = 0.2;
 
 fn compute_r0(points: &Vec<Vector2<f32>>) -> f32 {
-    5. * points.iter()
+    5. * points
+        .iter()
         .map(|point| point.norm())
         .max_by(|a, b| a.partial_cmp(b).expect("Bad values in point list"))
         .expect("Point list empty")
 }
 
-fn next_n_k(points: &Vec<Vector2<f32>>, original_net: &Vec<usize>, remaining_points: &HashSet<usize>, r0: f32) -> i32 {
+fn next_n_k(
+    points: &Vec<Vector2<f32>>,
+    original_net: &Vec<usize>,
+    remaining_points: &HashSet<usize>,
+    r0: f32,
+) -> i32 {
     // d: The maximum distance from a point not in the net to the closest one in the net
     let mut d = 0.0f32;
-    
+
     for new_point in remaining_points {
         let mut min_dist = f32::MAX;
         for og_point in original_net {
@@ -35,70 +45,123 @@ fn next_n_k(points: &Vec<Vector2<f32>>, original_net: &Vec<usize>, remaining_poi
     (-(d / r0).log2()).ceil() as i32
 }
 
-fn next_net(points: &Vec<Vector2<f32>>, original_net: &Vec<usize>, remaining_points: &mut HashSet<usize>, r0: f32, n: i32) -> Vec<usize> {
+fn next_net(
+    points: &Vec<Vector2<f32>>,
+    original_net: &Vec<usize>,
+    remaining_points: &mut HashSet<usize>,
+    r0: f32,
+    n: i32,
+) -> Vec<usize> {
     let mut new_net = original_net.clone();
     let r = r0 / ((1 << n) as f32);
     let r2 = r * r;
-    let mut outside_points = remaining_points.iter().filter(|rem_point| {
-        for og_point in original_net {
-            if (points[*og_point] - points[**rem_point]).norm_squared() < r * r {
-                return false;
+    let mut outside_points = remaining_points
+        .iter()
+        .filter(|rem_point| {
+            for og_point in original_net {
+                if (points[*og_point] - points[**rem_point]).norm_squared() < r * r {
+                    return false;
+                }
             }
-        }
-        true
-    }).map(|i| *i).collect::<Vec<usize>>();
+            true
+        })
+        .map(|i| *i)
+        .collect::<Vec<usize>>();
 
     while outside_points.len() > 0 {
         let new_net_point = outside_points.pop().unwrap();
         new_net.push(new_net_point);
         remaining_points.remove(&new_net_point);
-        
-        outside_points = outside_points.iter().filter(|i| {
-            (points[**i] - points[new_net_point]).norm_squared() >= r2
-        }).map(|v| *v).collect::<Vec<usize>>();
+
+        outside_points = outside_points
+            .iter()
+            .filter(|i| (points[**i] - points[new_net_point]).norm_squared() >= r2)
+            .map(|v| *v)
+            .collect::<Vec<usize>>();
     }
 
     new_net
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Cylinder {
     x0: Vector2<f32>,
     x1: Vector2<f32>,
     width: f32,
 }
 
-fn max_distance_from_line(points: &Vec<Vector2<f32>>, x0: Vector2<f32>, x1: Vector2<f32>, in_ball: &HashSet<usize>) -> f32 {
-
-    match in_ball.iter().map(|index| ((points[*index] - x0) - ((points[*index] - x0).dot(&(x1 - x0)) / (x1 - x0).norm_squared()) * (x1 - x0)).norm()).max_by(|x, y| x.partial_cmp(y).unwrap()) {
+fn max_distance_from_line(
+    points: &Vec<Vector2<f32>>,
+    x0: Vector2<f32>,
+    x1: Vector2<f32>,
+    in_ball: &HashSet<usize>,
+) -> f32 {
+    match in_ball
+        .iter()
+        .map(|index| {
+            ((points[*index] - x0)
+                - (points[*index] - x0).dot(&(x1 - x0)) / (x1 - x0).norm_squared() * (x1 - x0))
+                .norm()
+        })
+        .max_by(|x, y| x.partial_cmp(y).unwrap())
+    {
         Some(max) => max,
-        None => 0.0
+        None => 0.0,
     }
-  
 }
 
-fn get_points_in_ball(points: &Vec<Vector2<f32>>, net: &Vec<usize>, center: usize, radius: f32) -> HashSet<usize> {
-    net.iter().map(|index_ref| *index_ref).filter(|index| (points[*index] - points[center]).norm_squared() < radius * radius).collect()
+fn get_points_in_ball(
+    points: &Vec<Vector2<f32>>,
+    net: &Vec<usize>,
+    center: usize,
+    radius: f32,
+) -> HashSet<usize> {
+    net.iter()
+        .map(|index_ref| *index_ref)
+        .filter(|index| (points[*index] - points[center]).norm_squared() < radius * radius)
+        .collect()
 }
 
-fn find_thinnest_cylinder(points: &Vec<Vector2<f32>>, net: &Vec<usize>, center: usize, radius: f32) -> Cylinder {
-    let side_offsets = vec![radius * Vector2::<f32>::x(), radius * Vector2::<f32>::y(), -radius * Vector2::<f32>::x(), -radius * Vector2::<f32>::y()];
+fn find_thinnest_cylinder(
+    points: &Vec<Vector2<f32>>,
+    net: &Vec<usize>,
+    center: usize,
+    radius: f32,
+) -> Cylinder {
+    let side_offsets = vec![
+        radius * Vector2::<f32>::x(),
+        radius * Vector2::<f32>::y(),
+        -radius * Vector2::<f32>::x(),
+        -radius * Vector2::<f32>::y(),
+    ];
     let l = (40. * C0).ceil() as i32;
     let mut cylinder_width = f32::MAX;
     let points_in_ball = get_points_in_ball(points, net, center, radius);
     let mut cylinder = Cylinder::default();
+    cylinder.x0 =
+        side_offsets[0] + Vector2::<f32>::new(side_offsets[0].y, -side_offsets[0].x) * radius;
+    cylinder.x1 =
+        side_offsets[2] + Vector2::<f32>::new(side_offsets[2].y, -side_offsets[2].x) * radius;
+    cylinder.width = 0.0;
 
     // Atrocious nesting
     for side1 in 0..side_offsets.len() {
         for side2 in 0..side1 {
             for i in (-2 * l + 1)..(2 * l) {
-                let x0 = side_offsets[side1] + Vector2::<f32>::new(side_offsets[side1].y, -side_offsets[side1].x) * radius * ((i as f32) / ((2 * l) as f32));
+                let x0 = side_offsets[side1]
+                    + Vector2::<f32>::new(side_offsets[side1].y, -side_offsets[side1].x)
+                        * radius
+                        * ((i as f32) / ((2 * l) as f32));
                 for j in (-2 * l + 1)..(2 * l) {
-                    let x1 = side_offsets[side2] + Vector2::<f32>::new(side_offsets[side2].y, -side_offsets[side2].x) * radius * ((j as f32) / ((2 * l) as f32));
+                    let x1 = side_offsets[side2]
+                        + Vector2::<f32>::new(side_offsets[side2].y, -side_offsets[side2].x)
+                            * radius
+                            * ((j as f32) / ((2 * l) as f32));
+                    debug_assert_ne!(x0, x1);
 
                     let distance = max_distance_from_line(points, x0, x1, &points_in_ball);
 
-                    if distance > cylinder_width {
+                    if distance < cylinder_width {
                         cylinder_width = distance;
                         cylinder.width = cylinder_width;
                         cylinder.x0 = x0;
@@ -112,30 +175,38 @@ fn find_thinnest_cylinder(points: &Vec<Vector2<f32>>, net: &Vec<usize>, center: 
     cylinder
 }
 
-
-fn get_bounding_cylinders(points: &Vec<Vector2<f32>>, net :&Vec<usize>, next_net: &Vec<usize>, radius: f32) -> HashMap<usize, Cylinder> {
+fn get_bounding_cylinders(
+    points: &Vec<Vector2<f32>>,
+    net: &Vec<usize>,
+    next_net: &Vec<usize>,
+    radius: f32,
+) -> HashMap<usize, Cylinder> {
     let mut cylinder_map = HashMap::new();
 
     for index in net {
-        cylinder_map.insert(*index, find_thinnest_cylinder(points, next_net, *index, radius));
+        cylinder_map.insert(
+            *index,
+            find_thinnest_cylinder(points, next_net, *index, radius),
+        );
     }
 
     cylinder_map
 }
 
-fn flatness(cylinder: &Cylinder, radius: f32) -> f32{
+fn flatness(cylinder: &Cylinder, radius: f32) -> f32 {
     cylinder.width / radius
 }
 
 fn component(v: &Vector2<f32>, along: &Vector2<f32>) -> f32 {
+    debug_assert_ne!(*along, Vector2::zeros());
     v.dot(along) / along.norm()
 }
 
 fn bfs(
-    start: usize, 
-    visited: &mut HashSet<usize>, 
-    reps: &mut Vec<usize>, 
-    graph: &mut AdjacencyMatrix, 
+    start: usize,
+    visited: &mut HashSet<usize>,
+    reps: &mut Vec<usize>,
+    graph: &mut AdjacencyMatrix,
     used: &mut AdjacencyMatrix,
     set: &HashSet<usize>,
     origin: usize,
@@ -145,7 +216,7 @@ fn bfs(
 
     while !q.is_empty() {
         let node = *q.front().unwrap();
-        
+
         //Pops out the rep if the origin is inside the component
         //So we dont connect origin to its own component
         if node == origin {
@@ -167,8 +238,7 @@ fn bfs(
                 if used.adjacent(node, *i) {
                     //Removes it from the graph if it is
                     graph.remove_edge(node, *i);
-                }
-                else {
+                } else {
                     //Adds the edge to the used and pushes back the vertex
                     used.add_edge(node, *i);
                     q.push_back(*i);
@@ -178,7 +248,12 @@ fn bfs(
     }
 }
 
-fn find_reps(edges: &mut AdjacencyMatrix, used: &mut AdjacencyMatrix, set: &HashSet<usize>, origin: usize) -> Vec<usize> {
+fn find_reps(
+    edges: &mut AdjacencyMatrix,
+    used: &mut AdjacencyMatrix,
+    set: &HashSet<usize>,
+    origin: usize,
+) -> Vec<usize> {
     let mut reps: Vec<usize> = Vec::new();
     let mut visited: HashSet<usize> = HashSet::new();
 
@@ -195,7 +270,12 @@ fn find_reps(edges: &mut AdjacencyMatrix, used: &mut AdjacencyMatrix, set: &Hash
     reps
 }
 
-fn connect(origin: usize, reps: &Vec<usize>, edges: &mut AdjacencyMatrix, used: &mut AdjacencyMatrix) {
+fn connect(
+    origin: usize,
+    reps: &Vec<usize>,
+    edges: &mut AdjacencyMatrix,
+    used: &mut AdjacencyMatrix,
+) {
     //Connects the origin to each component rep
     for i in 0..reps.len() {
         edges.add_edge(origin, reps[i]);
@@ -206,7 +286,7 @@ fn connect(origin: usize, reps: &Vec<usize>, edges: &mut AdjacencyMatrix, used: 
 fn has_edge(used: &AdjacencyMatrix, v: usize) -> bool {
     for i in 0..used.vertex_ct() {
         if used.adjacent(i, v) {
-            return true
+            return true;
         }
     }
 
@@ -227,10 +307,10 @@ fn contains_edge(graph: &AdjacencyMatrix, verts: &HashSet<usize>) -> HashSet<usi
 
 //This function should add edges between flat pairs
 fn add_flat_pairs(
-    graph: &mut AdjacencyMatrix, 
-    node: usize, 
+    graph: &mut AdjacencyMatrix,
+    node: usize,
     points: &Vec<Vector2<f32>>,
-    net1: &Vec<usize>, 
+    net1: &Vec<usize>,
     net2: &Vec<usize>,
     verts: &mut HashSet<usize>,
     epsilon: f32,
@@ -241,7 +321,7 @@ fn add_flat_pairs(
     //Might just want to make center the node and iterate in non_flat
     for p in net1 {
         let xp_in_ball: HashSet<usize> = get_points_in_ball(points, net2, *p, epsilon);
-        
+
         //This feels bad but thinnest cylinder takes a vec
         let xp_in_ball_vec: Vec<usize> = xp_in_ball.into_iter().collect();
 
@@ -249,23 +329,27 @@ fn add_flat_pairs(
         let alpha = 2.0f32.powi(k) * c.width / epsilon;
 
         if alpha < 1.0 / 16. {
-            let mut min_cylinder_aligned_component= f32::MAX;
-            
+            let mut min_cylinder_aligned_component = f32::MAX;
+
             //Set this to p so that if no flat pair then the first part of the && will fail
-            let mut next_point= *p;
+            let mut next_point = *p;
             for q in xp_in_ball_vec {
-                if (points[*p] - points[q]).norm() < epsilon || (points[q] - points[*p]).norm() >= C0 * 2.0f32.powi(-k - 1) * epsilon {
+                if (points[*p] - points[q]).norm() < epsilon
+                    || (points[q] - points[*p]).norm() >= C0 * 2.0f32.powi(-k - 1) * epsilon
+                {
                     continue;
                 }
 
-                let component= component(&(points[q] - points[*p]), &(c.x1 - c.x0));
+                let component = component(&(points[q] - points[*p]), &(c.x1 - c.x0));
                 if component < min_cylinder_aligned_component {
                     min_cylinder_aligned_component = component;
                     next_point = q;
                 }
             }
 
-            if (points[next_point] - points[*p]).norm() > epsilon && (points[next_point] - points[*p]).norm() < 2. * epsilon {
+            if (points[next_point] - points[*p]).norm() > epsilon
+                && (points[next_point] - points[*p]).norm() < 2. * epsilon
+            {
                 graph.add_edge(*p, next_point);
                 verts.insert(*p);
                 verts.insert(next_point);
@@ -283,14 +367,17 @@ pub fn non_flat(
     n_k_plus_1: i32,
     r0: f32,
 ) {
-
     for u in not_flat_k {
         //Index of all points in net_k_plus_1 that are inside the ball of the current u
-        let vp_k_plus_1 = get_points_in_ball(points, net_k_plus_1, *u, C0 * 2.0f32.powi(-n_k_plus_1) * r0);
+        let vp_k_plus_1 =
+            get_points_in_ball(points, net_k_plus_1, *u, C0 * 2.0f32.powi(-n_k_plus_1) * r0);
 
         //Contains edge should return a hashset of the indices that have an edge in next_graph
         //So we take the difference
-        let v_k_plus_1: HashSet<usize> = vp_k_plus_1.difference(&contains_edge(graph, &vp_k_plus_1)).cloned().collect();
+        let v_k_plus_1: HashSet<usize> = vp_k_plus_1
+            .difference(&contains_edge(graph, &vp_k_plus_1))
+            .cloned()
+            .collect();
 
         //Goes to next point if its empty
         if v_k_plus_1.is_empty() {
@@ -303,22 +390,30 @@ pub fn non_flat(
 
         /* I was not sure what exactly to pass into epsilon and k */
         for v in v_k_plus_1.iter() {
-            add_flat_pairs(&mut g_k_plus_1, *v, &points, net_k, net_k_plus_1, &mut in_flat_pair, r0, n_k_plus_1);
+            add_flat_pairs(
+                &mut g_k_plus_1,
+                *v,
+                &points,
+                net_k,
+                net_k_plus_1,
+                &mut in_flat_pair,
+                r0,
+                n_k_plus_1,
+            );
         }
 
         let vs_k_plus_1: HashSet<usize> = vp_k_plus_1.union(&in_flat_pair).cloned().collect();
 
         let mut reps = find_reps(&mut g_k_plus_1, graph, &vs_k_plus_1, *u);
         connect(*u, &mut reps, &mut g_k_plus_1, graph);
-        g_k_plus_1.print_matrix();
     }
 }
 
 // Step k + 1
 // Take a look at what fields are available here and try to implement each part so that you are using somewhat analogous structure
-// The paper calls for remaining points from each net individually but I don't think they are used so I only keep track of the 
+// The paper calls for remaining points from each net individually but I don't think they are used so I only keep track of the
 // Remaining points after the last net
-fn astp_step_k_plus_1(
+fn atsp_step_k_plus_1(
     points: &Vec<Vector2<f32>>,
     graph: &AdjacencyMatrix,
     net_k: &Vec<usize>,
@@ -328,42 +423,66 @@ fn astp_step_k_plus_1(
     n_k_plus_1: i32,
     remaining_points: &mut HashSet<usize>,
     r0: f32,
-) {
-    
+) -> AdjacencyMatrix {
     let mut next_graph = AdjacencyMatrix::new();
     next_graph.resize(net_k_plus_1.len());
 
-    let r_k = 2.0f32.powi(-n_k);
+    let mut vertex_labels = HashMap::new();
+    for i in 0..net_k_plus_1.len() {
+        vertex_labels.insert(net_k_plus_1[i], i);
+    }
+
+    let r_k = r0 * 2.0f32.powi(-n_k);
 
     // 5.2.1 Families N_{k+1} and F_{k+1}
 
     // 5.2.2 Edges coming from E_k
-    let max_edge_length  = C0 * 2.0f32.powi(-n_k_plus_1 - 1) * r0;
+    let max_edge_length = 300. * 2.0f32.powi(-n_k_plus_1 - 1) * r0;
     for (u, v) in graph.edges() {
-        let flatness_u = flatness_map_k.get(&u).unwrap().width / (r0 * 2.0f32.powi(-n_k));
-        let flatness_v = flatness_map_k.get(&v).unwrap().width / (r0 * 2.0f32.powi(-n_k));
+        let flatness_u = flatness_map_k[&net_k[u]].width / r_k;
+        let flatness_v = flatness_map_k[&net_k[v]].width / r_k;
 
-        if (points[u] - points[v]).norm() >= max_edge_length || (flatness_u >= 1. / 16. && flatness_v >= 1. / 16.) {
-            next_graph.add_edge(u, v);
-        }
-        else {
+        if (points[net_k[u]] - points[net_k[v]]).norm() >= max_edge_length
+            || (flatness_u >= 1. / 16. && flatness_v >= 1. / 16.)
+        {
+            next_graph.add_edge(vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]);
+        } else {
             let mut u = u;
             let mut v = v;
             if flatness_u < 1. / 16. {
                 swap(&mut u, &mut v);
             }
 
-            let mut points_along_edge: Vec<(usize, f32)> = get_points_in_ball(points, net_k_plus_1, u, 2.0f32.powi(-n_k)).union(&get_points_in_ball(points, net_k_plus_1, v, r_k)).into_iter()
-                .map(|index| (*index, component(&(points[*index] - points[u]), &(points[v] - points[u])))).collect();
-            points_along_edge.sort_by(|(_i1, comp1), (_i2, comp2)| comp1.partial_cmp(comp2).unwrap());
+            let mut points_along_edge: Vec<(usize, f32)> =
+                get_points_in_ball(points, net_k_plus_1, u, r_k)
+                    .union(&get_points_in_ball(points, net_k_plus_1, v, r_k))
+                    .into_iter()
+                    .map(|index| {
+                        (
+                            *index,
+                            component(
+                                &(points[*index] - points[net_k[u]]),
+                                &(points[net_k[v]] - points[net_k[u]]),
+                            ),
+                        )
+                    })
+                    .collect();
+            points_along_edge
+                .sort_by(|(_i1, comp1), (_i2, comp2)| comp1.partial_cmp(comp2).unwrap());
+
 
             // Find the next element after the one with component 0 namely u
-            let index_of_first_past_u = match points_along_edge.binary_search_by(|(_i, comp1)| comp1.partial_cmp(&(0.000001)).unwrap()) { Ok(index) => index, Err(index) => index};
-            for i in index_of_first_past_u..points_along_edge.len() {
+            let index_of_first_past_u = match points_along_edge
+                .binary_search_by(|(_i, comp1)| comp1.partial_cmp(&0.0).unwrap())
+            {
+                Ok(index) => index,
+                Err(index) => index,
+            };
+            for i in index_of_first_past_u..(points_along_edge.len() - 1) {
                 let (index, _component) = points_along_edge[i];
-                let (prev_index, _prev_component) = points_along_edge[i - 1];
+                let (prev_index, _prev_component) = points_along_edge[i + 1];
 
-                next_graph.add_edge(index, prev_index);
+                next_graph.add_edge(vertex_labels[&index], vertex_labels[&prev_index]);
 
                 if index == v {
                     break;
@@ -372,8 +491,12 @@ fn astp_step_k_plus_1(
         }
     }
 
+
     // 5.2.3 Edges coming from F_k
-    for (u, cyl) in flatness_map_k.iter().filter(|(u, cyl)| cyl.width / r_k < 1.0 / 16.0) {
+    for (u, cyl) in flatness_map_k
+        .iter()
+        .filter(|(_u, cyl)| cyl.width / r_k < 1.0 / 16.0)
+    {
         let points_in_ball = get_points_in_ball(points, net_k_plus_1, *u, r_k);
 
         let net_k_union_ball = points_in_ball.iter().filter(|point| net_k.contains(point));
@@ -381,85 +504,128 @@ fn astp_step_k_plus_1(
         let mut do_points_to_left = true;
 
         for u_prime in net_k_union_ball {
+            debug_assert_ne!(cyl.x1, cyl.x0);
             if component(&(points[*u_prime] - points[*u]), &(cyl.x1 - cyl.x0)) < 0. {
                 do_points_to_left = false;
-            }
-            else if component(&(points[*u_prime] - points[*u]), &(cyl.x1 - cyl.x0)) > 0. {
+            } else if component(&(points[*u_prime] - points[*u]), &(cyl.x1 - cyl.x0)) > 0. {
                 do_points_to_right = false;
             }
         }
 
         if do_points_to_left || do_points_to_right {
-            let mut ordered_along_cyl = points_in_ball.iter().map(|u1| (*u1, component(&(points[*u1] - points[*u]), &(cyl.x1 - cyl.x0)))).collect::<Vec<(usize, f32)>>();
-            ordered_along_cyl.sort_by(|(_u1, comp1), (_u2, comp2)| comp1.partial_cmp(comp2).expect("Couldn't compare components"));
+            let mut ordered_along_cyl = points_in_ball
+                .iter()
+                .map(|u1| {
+                    (
+                        *u1,
+                        component(&(points[*u1] - points[*u]), &(cyl.x1 - cyl.x0)),
+                    )
+                })
+                .collect::<Vec<(usize, f32)>>();
+            ordered_along_cyl.sort_by(|(_u1, comp1), (_u2, comp2)| {
+                comp1
+                    .partial_cmp(comp2)
+                    .expect("Couldn't compare components")
+            });
 
-            let u_index = match ordered_along_cyl.binary_search_by(|(_u1, comp1)| comp1.partial_cmp(&0.0).expect("Couldn't compare components")) {
-                Ok(index) => {
-                    index
-                }
-                Err(index) => {
-                    index
-                }
+            let u_index = match ordered_along_cyl.binary_search_by(|(_u1, comp1)| {
+                comp1
+                    .partial_cmp(&0.0)
+                    .expect("Couldn't compare components")
+            }) {
+                Ok(index) => index,
+                Err(index) => index,
             };
 
+            println!("{:?}", ordered_along_cyl);
+
             if do_points_to_left {
-                for i in 0..(u_index - 1) {
-                    next_graph.add_edge(ordered_along_cyl[i].0, ordered_along_cyl[i + 1].0);
+                for i in 0..u_index {
+                    next_graph.add_edge(
+                        vertex_labels[&ordered_along_cyl[i].0],
+                        vertex_labels[&ordered_along_cyl[i + 1].0],
+                    );
                 }
             }
             if do_points_to_right {
                 for i in u_index..(ordered_along_cyl.len() - 1) {
-                    next_graph.add_edge(ordered_along_cyl[i].0, ordered_along_cyl[i + 1].0);
+                    next_graph.add_edge(
+                        vertex_labels[&ordered_along_cyl[i].0],
+                        vertex_labels[&ordered_along_cyl[i + 1].0],
+                    );
                 }
             }
         }
     }
 
-    non_flat(points, &mut next_graph, net_k, net_k_plus_1, &flatness_map_k.iter().filter(|(_u, cyl)| cyl.width / r_k < 1.0 / 16.0).map(|tup| *tup.0).collect(), n_k_plus_1, r0);
+    // non_flat(points, &mut next_graph, net_k, net_k_plus_1, &flatness_map_k.iter().filter(|(_u, cyl)| cyl.width / r_k < 1.0 / 16.0).map(|tup| *tup.0).collect(), n_k_plus_1, r0);
 
     if !remaining_points.is_empty() {
         let n_k_plus_2 = next_n_k(points, net_k_plus_1, remaining_points, r0);
         let net_k_plus_2 = next_net(points, net_k_plus_1, remaining_points, r0, n_k_plus_2);
-        let flatness_map_k_plus_1 = get_bounding_cylinders(points, net_k_plus_1, &net_k_plus_2, r0 * 2.0f32.powi(-(n_k_plus_1 as i32)));
+        let flatness_map_k_plus_1 = get_bounding_cylinders(
+            points,
+            net_k_plus_1,
+            &net_k_plus_2,
+            r0 * 2.0f32.powi(-(n_k_plus_1 as i32)),
+        );
 
-
-        astp_step_k_plus_1(points, &next_graph, net_k_plus_1, &net_k_plus_2, &flatness_map_k_plus_1, n_k_plus_1, n_k_plus_2, remaining_points, r0);
+        return atsp_step_k_plus_1(
+            points,
+            &next_graph,
+            net_k_plus_1,
+            &net_k_plus_2,
+            &flatness_map_k_plus_1,
+            n_k_plus_1,
+            n_k_plus_2,
+            remaining_points,
+            r0,
+        );
+    } else {
+        return next_graph;
     }
 }
 
+fn euler_tour(g: &AdjacencyMatrix, traversal: &mut Vec<usize>, visited: &mut Vec<bool>, v: usize) {
+    traversal.push(v);
+    visited[v] = true;
+    for u in g.neighbors(v) {
+        if !visited[u] {
+            euler_tour(g, traversal, visited, u);
+            traversal.push(v);
+        }
+    }
+}
 
 // This needs to be rewritten
-pub fn atsp(points: &Vec<Vector2<f32>>) -> Vec<i32> {
+pub fn atsp(points: &Vec<Vector2<f32>>) -> Vec<usize> {
     let r0 = compute_r0(&points);
-    let mut n_k = 1; // n_1 from the paper
-    let mut net = vec![0]; // V_1 from the paper
+    let n_1 = 1; // n_1 from the paper
+    let net = vec![0]; // V_1 from the paper
     let mut remaining_points: HashSet<usize> = (1..points.len()).collect();
-    let mut i = 1;
     let mut g = AdjacencyMatrix::new();
-    g.resize(points.len());
+    g.add_vertex();
+    let n_2 = next_n_k(points, &net, &remaining_points, r0);
+    let net_2 = next_net(points, &net, &mut remaining_points, r0, n_2);
 
-    println!("X_{}: {:?}", i, net);
-    println!("n_{}: {}", i, n_k);
-    println!("{} points remain", remaining_points.len());
+    let flatness_map_1 =
+        get_bounding_cylinders(points, &net, &net_2, r0 * 2.0f32.powi(-(n_2 as i32)));
 
-    while remaining_points.len() > 0 {
+    let final_graph = atsp_step_k_plus_1(
+        points,
+        &g,
+        &net,
+        &net_2,
+        &flatness_map_1,
+        n_1,
+        n_2,
+        &mut remaining_points,
+        r0,
+    );
 
-        let n_k_plus_1 = next_n_k(points, &net, &remaining_points, r0);
-        let next_net = next_net(points, &net, &mut remaining_points, r0, n_k_plus_1);
-        let bounding_cylinders = get_bounding_cylinders(points, &net, &next_net, r0 * 2.0f32.powi(-(n_k_plus_1 as i32)));
-        
-
-        net = next_net;
-        n_k = n_k_plus_1;
-        i += 1;
-
-        println!("X_{}: {:?}", i, net);
-        println!("n_{}: {}", i, n_k);
-        println!("{} points remain", remaining_points.len());
-    }
-
-    // find_thinnest_cylinder(Vector2::<f32>::zeros(), points, 1.0);
-
-    Vec::new()
+    let mut traversal = Vec::new();
+    let mut visited = Vec::new();
+    visited.resize(final_graph.vertex_ct(), false);
+    euler_tour(&final_graph, &mut traversal, &mut visited, 0);
+    traversal
 }
-

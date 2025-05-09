@@ -239,7 +239,3 @@ impl Graph for AdjacencyMatrix {
 
     }
 }
-
-pub struct GraphAL {
-    al: Vec<Vec<usize>>,
-}
