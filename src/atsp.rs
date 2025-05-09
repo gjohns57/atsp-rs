@@ -482,6 +482,7 @@ fn atsp_step_k_plus_1(
                 let (index, _component) = points_along_edge[i];
                 let (prev_index, _prev_component) = points_along_edge[i + 1];
 
+                println!("{} {}", vertex_labels[&index], vertex_labels[&prev_index]);
                 next_graph.add_edge(vertex_labels[&index], vertex_labels[&prev_index]);
 
                 if index == v {
