@@ -440,6 +440,7 @@ fn atsp_step_k_plus_1(
     // 5.2.2 Edges coming from E_k
     let max_edge_length = 300. * 2.0f32.powi(-n_k_plus_1 - 1) * r0;
     for (u, v) in graph.edges() {
+        println!("Handling edges about edge {{{}, {}}}", net_k[u], net_k[v]);
         let flatness_u = flatness_map_k[&net_k[u]].width / r_k;
         let flatness_v = flatness_map_k[&net_k[v]].width / r_k;
 
@@ -456,8 +457,8 @@ fn atsp_step_k_plus_1(
             }
 
             let mut points_along_edge: Vec<(usize, f32)> =
-                get_points_in_ball(points, net_k_plus_1, u, r_k)
-                    .union(&get_points_in_ball(points, net_k_plus_1, v, r_k))
+                get_points_in_ball(points, net_k_plus_1, net_k[u], r_k)
+                    .union(&get_points_in_ball(points, net_k_plus_1, net_k[v], r_k))
                     .into_iter()
                     .map(|index| {
                         (
@@ -472,22 +473,24 @@ fn atsp_step_k_plus_1(
             points_along_edge
                 .sort_by(|(_i1, comp1), (_i2, comp2)| comp1.partial_cmp(comp2).unwrap());
 
-
+            println!("\tPoints along edge {:?}", points_along_edge);
+            
             // Find the next element after the one with component 0 namely u
             let index_of_first_past_u = match points_along_edge
                 .binary_search_by(|(_i, comp1)| comp1.partial_cmp(&0.0).unwrap())
             {
-                Ok(index) => index,
-                Err(index) => index,
+                Ok(index) => index + 1,
+                Err(index) => index + 1,
             };
-            for i in index_of_first_past_u..(points_along_edge.len() - 1) {
-                let (index, _component) = points_along_edge[i];
-                let (prev_index, _prev_component) = points_along_edge[i + 1];
 
-                println!("replacing edge {} {} with {} {}", u, v, vertex_labels[&index], vertex_labels[&prev_index]);
+            for i in index_of_first_past_u..points_along_edge.len() {
+                let (index, _component) = points_along_edge[i];
+                let (prev_index, _prev_component) = points_along_edge[i - 1];
+
+                println!("\treplacing edge {} {} with {} {}", net_k[u], net_k[v], prev_index, index);
                 next_graph.add_edge(vertex_labels[&index], vertex_labels[&prev_index]);
 
-                if index == v {
+                if index == net_k[v] {
                     break;
                 }
             }
@@ -500,7 +503,10 @@ fn atsp_step_k_plus_1(
         .iter()
         .filter(|(_u, cyl)| cyl.width / r_k < 1.0 / 16.0)
     {
+        println!("Adding flat edges about {}", u);
+        println!("\tCylinder: {:?}", *cyl);
         let points_in_ball = get_points_in_ball(points, net_k_plus_1, *u, r_k);
+        println!("\t{:?}", points_in_ball);
 
         let net_k_union_ball = points_in_ball.iter().filter(|point| net_k.contains(point));
         let mut do_points_to_right = true;
@@ -540,11 +546,11 @@ fn atsp_step_k_plus_1(
                 Err(index) => index,
             };
 
-            println!("ordered along cyl {:?}", ordered_along_cyl);
+            println!("\tordered along cyl {:?}", ordered_along_cyl);
 
             if do_points_to_left {
                 for i in 0..u_index {
-                    println!("Adding flat edge {} {}", vertex_labels[&ordered_along_cyl[i].0], vertex_labels[&ordered_along_cyl[i + 1].0]);
+                    println!("\tAdding flat edge {} {}", &ordered_along_cyl[i].0, &ordered_along_cyl[i + 1].0);
                     next_graph.add_edge(
                         vertex_labels[&ordered_along_cyl[i].0],
                         vertex_labels[&ordered_along_cyl[i + 1].0],
@@ -553,7 +559,7 @@ fn atsp_step_k_plus_1(
             }
             if do_points_to_right {
                 for i in u_index..(ordered_along_cyl.len() - 1) {
-                    println!("Adding flat edge {} {}", ordered_along_cyl[i].0, ordered_along_cyl[i + 1].0);
+                    println!("\tAdding flat edge {} {}", ordered_along_cyl[i].0, ordered_along_cyl[i + 1].0);
 
                     next_graph.add_edge(
                         vertex_labels[&ordered_along_cyl[i].0],
@@ -588,7 +594,15 @@ fn atsp_step_k_plus_1(
             r0,
         );
     } else {
-        return next_graph;
+    
+        let mut remapped_graph = AdjacencyMatrix::new();
+        remapped_graph.resize(next_graph.vertex_ct());
+
+        for (u, v) in next_graph.edges() {
+            remapped_graph.add_edge(net_k_plus_1[u], net_k_plus_1[v]);
+        }
+
+        return remapped_graph;
     }
 }
 
@@ -615,7 +629,7 @@ pub fn atsp(points: &Vec<Vector2<f32>>) -> Vec<usize> {
     let net_2 = next_net(points, &net, &mut remaining_points, r0, n_2);
 
     let flatness_map_1 =
-        get_bounding_cylinders(points, &net, &net_2, r0 * 2.0f32.powi(-(n_2 as i32)));
+        get_bounding_cylinders(points, &net, &net_2, r0);
 
     let final_graph = atsp_step_k_plus_1(
         points,
@@ -628,6 +642,11 @@ pub fn atsp(points: &Vec<Vector2<f32>>) -> Vec<usize> {
         &mut remaining_points,
         r0,
     );
+
+    println!("Final graph");
+    for (u, v) in final_graph.edges() {
+        println!("\t{} {}", u, v);
+    }
 
     let mut traversal = Vec::new();
     let mut visited = Vec::new();
