@@ -643,11 +643,6 @@ pub fn atsp(points: &Vec<Vector2<f32>>) -> Vec<usize> {
         r0,
     );
 
-    println!("Final graph");
-    for (u, v) in final_graph.edges() {
-        println!("\t{} {}", u, v);
-    }
-
     let mut traversal = Vec::new();
     let mut visited = Vec::new();
     visited.resize(final_graph.vertex_ct(), false);
