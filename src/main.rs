@@ -1,12 +1,20 @@
 use atsp_rs::atsp::atsp;
 use nalgebra::{vector, Vector2};
-use rand::random;
+use std::io::{stdin, Read};
+//use rand::random;
 fn main() {
-    let mut points = (0..20)
-        .map(|i| Vector2::new(i as f32, 0.0))
-        .collect::<Vec<Vector2<f32>>>();
-    let new_point = vector![10., 100.];
-    points.push(new_point);
+    let mut points = Vec::new();
+    let mut ipt = String::new();
+    let mut x: f32;
+    let mut y: f32;
+    println!("Enter points and then type done!");
+    loop {
+        stdin().read_line(&mut ipt).expect("unable to read line");
+        let nums = ipt.trim().split(' ').collect();
+        x = nums[0].parse::<f32>().expect("unable to read x value");
+        y = nums[1].parse::<f32>().expect("unable to read y value");
+        points.push(vector![x, y]);
+    }
     // let max_magnitude = points.iter().map(|point| point.norm()).max_by(|x, y| x.partial_cmp(y).unwrap()).unwrap();
     // points = points.iter().map(|v| v / max_magnitude).collect();
 
