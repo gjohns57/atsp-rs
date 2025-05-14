@@ -4,7 +4,7 @@ use std::{
     ops::Index,
 };
 
-use nalgebra::{Vector2, zero};
+use nalgebra::{zero, Vector2};
 
 use crate::graph::{AdjacencyMatrix, Graph};
 
@@ -234,7 +234,7 @@ fn bfs(
         q.pop_front();
 
         for i in set {
-            if graph.adjacent(node, mpa[i]) && !visited.contains(&map[i]) {
+            if graph.adjacent(node, map[i]) && !visited.contains(&map[i]) {
                 //Checks if the edge is in used
                 if used.adjacent(node, map[i]) {
                     //Removes it from the graph if it is
@@ -296,7 +296,7 @@ fn has_edge(used: &AdjacencyMatrix, v: usize) -> bool {
 }
 
 fn contains_edge(
-    graph: &AdjacencyMatrix, 
+    graph: &AdjacencyMatrix,
     verts: &HashSet<usize>,
     map: &HashMap<usize, usize>,
 ) -> HashSet<usize> {
@@ -304,7 +304,7 @@ fn contains_edge(
 
     for v in verts {
         if has_edge(graph, map[v]) {
-            contains.insert(v);
+            contains.insert(*v);
         }
     }
 
@@ -319,7 +319,7 @@ fn add_flat_pairs(
     net1: &Vec<usize>,
     net2: &Vec<usize>,
     verts: &mut HashSet<usize>,
-    map: &HashMap<usize>,
+    map: &HashMap<usize, usize>,
     epsilon: f32,
     k: i32,
 ) {
@@ -456,7 +456,10 @@ fn atsp_step_k_plus_1(
         if (points[net_k[u]] - points[net_k[v]]).norm() >= max_edge_length
             || (flatness_u >= 1. / 16. && flatness_v >= 1. / 16.)
         {
-            println!("Keeping edge {} {}", vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]);
+            println!(
+                "Keeping edge {} {}",
+                vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]
+            );
             next_graph.add_edge(vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]);
         } else {
             let mut u = u;
@@ -483,7 +486,7 @@ fn atsp_step_k_plus_1(
                 .sort_by(|(_i1, comp1), (_i2, comp2)| comp1.partial_cmp(comp2).unwrap());
 
             println!("\tPoints along edge {:?}", points_along_edge);
-            
+
             // Find the next element after the one with component 0 namely u
             let index_of_first_past_u = match points_along_edge
                 .binary_search_by(|(_i, comp1)| comp1.partial_cmp(&0.0).unwrap())
@@ -496,7 +499,10 @@ fn atsp_step_k_plus_1(
                 let (index, _component) = points_along_edge[i];
                 let (prev_index, _prev_component) = points_along_edge[i - 1];
 
-                println!("\treplacing edge {} {} with {} {}", net_k[u], net_k[v], prev_index, index);
+                println!(
+                    "\treplacing edge {} {} with {} {}",
+                    net_k[u], net_k[v], prev_index, index
+                );
                 next_graph.add_edge(vertex_labels[&index], vertex_labels[&prev_index]);
 
                 if index == net_k[v] {
@@ -505,7 +511,6 @@ fn atsp_step_k_plus_1(
             }
         }
     }
-
 
     // 5.2.3 Edges coming from F_k
     for (u, cyl) in flatness_map_k
@@ -559,7 +564,11 @@ fn atsp_step_k_plus_1(
 
             if do_points_to_left {
                 for i in 0..u_index {
-                    println!("\tAdding flat edge {} {}", &ordered_along_cyl[i].0, &ordered_along_cyl[i + 1].0);
+                    println!(
+                        "\tAdding flat edge {} {}",
+                        &ordered_along_cyl[i].0,
+                        &ordered_along_cyl[i + 1].0
+                    );
                     next_graph.add_edge(
                         vertex_labels[&ordered_along_cyl[i].0],
                         vertex_labels[&ordered_along_cyl[i + 1].0],
@@ -568,7 +577,11 @@ fn atsp_step_k_plus_1(
             }
             if do_points_to_right {
                 for i in u_index..(ordered_along_cyl.len() - 1) {
-                    println!("\tAdding flat edge {} {}", ordered_along_cyl[i].0, ordered_along_cyl[i + 1].0);
+                    println!(
+                        "\tAdding flat edge {} {}",
+                        ordered_along_cyl[i].0,
+                        ordered_along_cyl[i + 1].0
+                    );
 
                     next_graph.add_edge(
                         vertex_labels[&ordered_along_cyl[i].0],
@@ -603,7 +616,6 @@ fn atsp_step_k_plus_1(
             r0,
         );
     } else {
-    
         let mut remapped_graph = AdjacencyMatrix::new();
         remapped_graph.resize(next_graph.vertex_ct());
 
@@ -637,8 +649,7 @@ pub fn atsp(points: &Vec<Vector2<f32>>) -> Vec<usize> {
     let n_2 = next_n_k(points, &net, &remaining_points, r0);
     let net_2 = next_net(points, &net, &mut remaining_points, r0, n_2);
 
-    let flatness_map_1 =
-        get_bounding_cylinders(points, &net, &net_2, r0);
+    let flatness_map_1 = get_bounding_cylinders(points, &net, &net_2, r0);
 
     let final_graph = atsp_step_k_plus_1(
         points,
