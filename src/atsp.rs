@@ -8,7 +8,7 @@ use nalgebra::{zero, Vector2};
 
 use crate::graph::{AdjacencyMatrix, Graph};
 
-const C0: f32 = 0.2;
+const C0: f32 = 0.5;
 
 fn compute_r0(points: &Vec<Vector2<f32>>) -> f32 {
     5. * points
@@ -220,7 +220,7 @@ fn bfs(
 
         //Pops out the rep if the origin is inside the component
         //So we dont connect origin to its own component
-        if node == origin {
+        if node == map[&origin] {
             reps.pop();
         }
 
@@ -274,6 +274,7 @@ fn find_reps(
 
 fn connect(
     origin: usize,
+    og: usize,
     reps: &Vec<usize>,
     edges: &mut AdjacencyMatrix,
     used: &mut AdjacencyMatrix,
@@ -316,7 +317,6 @@ fn add_flat_pairs(
     graph: &mut AdjacencyMatrix,
     v: usize,
     points: &Vec<Vector2<f32>>,
-    net1: &Vec<usize>,
     net2: &Vec<usize>,
     verts: &mut HashSet<usize>,
     map: &HashMap<usize, usize>,
@@ -334,7 +334,7 @@ fn add_flat_pairs(
     if alpha < 1.0 / 16. {
         let mut min_cylinder_aligned_component = f32::MAX;
 
-        //Set this to p so that if no flat pair then the first part of the && will fail
+        //Set this to v so that if no flat pair then the first part of the && will fail
         let mut next_point = v;
         for q in xp_in_ball_vec {
             if (points[v] - points[q]).norm() < epsilon
@@ -363,7 +363,6 @@ fn add_flat_pairs(
 pub fn non_flat(
     points: &Vec<Vector2<f32>>,
     graph: &mut AdjacencyMatrix, //next_graph
-    net_k: &Vec<usize>,
     net_k_plus_1: &Vec<usize>,
     not_flat_k: &Vec<usize>,
     n_k_plus_1: i32,
@@ -376,12 +375,9 @@ pub fn non_flat(
     }
 
     for u in not_flat_k {
-        //Index of all points in net_k_plus_1 that are inside the ball of the current u
         let vp_k_plus_1 =
             get_points_in_ball(points, net_k_plus_1, *u, C0 * 2.0f32.powi(-n_k_plus_1) * r0);
 
-        //Contains edge should return a hashset of the indices that have an edge in next_graph
-        //So we take the difference
         let v_k_plus_1: HashSet<usize> = vp_k_plus_1
             .difference(&contains_edge(graph, &vp_k_plus_1, &map))
             .cloned()
@@ -396,13 +392,11 @@ pub fn non_flat(
         g_k_plus_1.resize(net_k_plus_1.len());
         let mut in_flat_pair: HashSet<usize> = HashSet::new();
 
-        /* I was not sure what exactly to pass into epsilon and k */
         for v in v_k_plus_1.iter() {
             add_flat_pairs(
                 &mut g_k_plus_1,
                 *v,
                 &points,
-                net_k,
                 net_k_plus_1,
                 &mut in_flat_pair,
                 &map,
@@ -414,7 +408,7 @@ pub fn non_flat(
         let vs_k_plus_1: HashSet<usize> = vp_k_plus_1.union(&in_flat_pair).cloned().collect();
 
         let mut reps = find_reps(&mut g_k_plus_1, graph, &vs_k_plus_1, &map, *u);
-        connect(*u, &mut reps, &mut g_k_plus_1, graph);
+        connect(map[u], *u, &mut reps, &mut g_k_plus_1, graph);
     }
 }
 
@@ -449,18 +443,18 @@ fn atsp_step_k_plus_1(
     // 5.2.2 Edges coming from E_k
     let max_edge_length = 300. * 2.0f32.powi(-n_k_plus_1 - 1) * r0;
     for (u, v) in graph.edges() {
-        println!("Handling edges about edge {{{}, {}}}", net_k[u], net_k[v]);
+        // println!("Handling edges about edge {{{}, {}}}", net_k[u], net_k[v]);
         let flatness_u = flatness_map_k[&net_k[u]].width / r_k;
         let flatness_v = flatness_map_k[&net_k[v]].width / r_k;
 
         if (points[net_k[u]] - points[net_k[v]]).norm() >= max_edge_length
             || (flatness_u >= 1. / 16. && flatness_v >= 1. / 16.)
         {
-            println!(
-                "Keeping edge {} {}",
-                vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]
-            );
-            next_graph.add_edge(vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]);
+            // println!(
+            //     "Keeping edge {} {}",
+            //     vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]
+            // );
+            // next_graph.add_edge(vertex_labels[&net_k[u]], vertex_labels[&net_k[v]]);
         } else {
             let mut u = u;
             let mut v = v;
@@ -485,7 +479,7 @@ fn atsp_step_k_plus_1(
             points_along_edge
                 .sort_by(|(_i1, comp1), (_i2, comp2)| comp1.partial_cmp(comp2).unwrap());
 
-            println!("\tPoints along edge {:?}", points_along_edge);
+            // println!("\tPoints along edge {:?}", points_along_edge);
 
             // Find the next element after the one with component 0 namely u
             let index_of_first_past_u = match points_along_edge
@@ -499,10 +493,10 @@ fn atsp_step_k_plus_1(
                 let (index, _component) = points_along_edge[i];
                 let (prev_index, _prev_component) = points_along_edge[i - 1];
 
-                println!(
-                    "\treplacing edge {} {} with {} {}",
-                    net_k[u], net_k[v], prev_index, index
-                );
+                // println!(
+                //     "\treplacing edge {} {} with {} {}",
+                //     net_k[u], net_k[v], prev_index, index
+                // );
                 next_graph.add_edge(vertex_labels[&index], vertex_labels[&prev_index]);
 
                 if index == net_k[v] {
@@ -517,10 +511,10 @@ fn atsp_step_k_plus_1(
         .iter()
         .filter(|(_u, cyl)| cyl.width / r_k < 1.0 / 16.0)
     {
-        println!("Adding flat edges about {}", u);
-        println!("\tCylinder: {:?}", *cyl);
+        // println!("Adding flat edges about {}", u);
+        // println!("\tCylinder: {:?}", *cyl);
         let points_in_ball = get_points_in_ball(points, net_k_plus_1, *u, r_k);
-        println!("\t{:?}", points_in_ball);
+        // println!("\t{:?}", points_in_ball);
 
         let net_k_union_ball = points_in_ball.iter().filter(|point| net_k.contains(point));
         let mut do_points_to_right = true;
@@ -560,15 +554,15 @@ fn atsp_step_k_plus_1(
                 Err(index) => index,
             };
 
-            println!("\tordered along cyl {:?}", ordered_along_cyl);
+            // println!("\tordered along cyl {:?}", ordered_along_cyl);
 
             if do_points_to_left {
                 for i in 0..u_index {
-                    println!(
-                        "\tAdding flat edge {} {}",
-                        &ordered_along_cyl[i].0,
-                        &ordered_along_cyl[i + 1].0
-                    );
+                    // println!(
+                    //     "\tAdding flat edge {} {}",
+                    //     &ordered_along_cyl[i].0,
+                    //     &ordered_along_cyl[i + 1].0
+                    // );
                     next_graph.add_edge(
                         vertex_labels[&ordered_along_cyl[i].0],
                         vertex_labels[&ordered_along_cyl[i + 1].0],
@@ -577,11 +571,11 @@ fn atsp_step_k_plus_1(
             }
             if do_points_to_right {
                 for i in u_index..(ordered_along_cyl.len() - 1) {
-                    println!(
-                        "\tAdding flat edge {} {}",
-                        ordered_along_cyl[i].0,
-                        ordered_along_cyl[i + 1].0
-                    );
+                    // println!(
+                    //     "\tAdding flat edge {} {}",
+                    //     ordered_along_cyl[i].0,
+                    //     ordered_along_cyl[i + 1].0
+                    // );
 
                     next_graph.add_edge(
                         vertex_labels[&ordered_along_cyl[i].0],
@@ -592,7 +586,7 @@ fn atsp_step_k_plus_1(
         }
     }
 
-    // non_flat(points, &mut next_graph, net_k, net_k_plus_1, &flatness_map_k.iter().filter(|(_u, cyl)| cyl.width / r_k < 1.0 / 16.0).map(|tup| *tup.0).collect(), n_k_plus_1, r0);
+    non_flat(points, &mut next_graph, net_k_plus_1, &flatness_map_k.iter().filter(|(_u, cyl)| cyl.width / r_k < 1.0 / 16.0).map(|tup| *tup.0).collect(), n_k, n_k_plus_1, r0);
 
     if !remaining_points.is_empty() {
         let n_k_plus_2 = next_n_k(points, net_k_plus_1, remaining_points, r0);
